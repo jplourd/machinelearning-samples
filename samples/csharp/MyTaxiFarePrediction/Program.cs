@@ -12,6 +12,9 @@ using Microsoft.ML.Transforms.Text;
 
 namespace TaxiFarePrediction
 {
+    //You want to predict the price value, which is a real value, based on the other factors in the data set. 
+    //To do that you choose a regression machine learning task.
+
     class Program
     {
         // <Snippet2>
@@ -25,11 +28,8 @@ namespace TaxiFarePrediction
         {
             Console.WriteLine(Environment.CurrentDirectory);
 
-            // <Snippet3>
             MLContext mlContext = new MLContext(seed: 0);
-            // </Snippet3>
 
-            // <Snippet4>
             _textLoader = mlContext.Data.CreateTextReader(new TextLoader.Arguments()
             {
                 Separator = ",",
@@ -46,104 +46,107 @@ namespace TaxiFarePrediction
                             }
             }
             );
-            // </Snippet4>
-
-            // <Snippet5>
             var model = Train(mlContext, _trainDataPath);
-            // </Snippet5>
 
-            // <Snippet14>
             Evaluate(mlContext, model);
-            // </Snippet14>
 
-            // <Snippet20>
             TestSinglePrediction(mlContext);
-            // </Snippet20>
+
+            Console.WriteLine("*********  End **********");
         }
-        
+
         public static ITransformer Train(MLContext mlContext, string dataPath)
         {
-            // <Snippet6>
+            // Loads the data.
+            //Extracts and transforms the data.
+            //Trains the model.
+            //Saves the model as .zip file.
+            //Returns the model.
             IDataView dataView = _textLoader.Read(dataPath);
-            // </Snippet6>
 
-            // <Snippet7>
+            //When the model is trained and evaluated, by default, the values in the Label column are considered as correct values to be predicted. 
+            //As we want to predict the taxi trip fare, copy the FareAmount column into the Label column. To do that, 
+            //use the CopyColumnsEstimator transformation class
             var pipeline = mlContext.Transforms.CopyColumns("FareAmount", "Label")
-            // </Snippet7>
-                    // <Snippet8>
+                    //The algorithm that trains the model requires numeric features, so you have to transform the categorical data 
+                    //(VendorId, RateCode, and PaymentType) values into numbers. To do that, use the OneHotEncodingEstimator transformation 
+                    // class, which assigns different numeric key values to the different values in each of the columns,
                     .Append(mlContext.Transforms.Categorical.OneHotEncoding("VendorId"))
                     .Append(mlContext.Transforms.Categorical.OneHotEncoding("RateCode"))
                     .Append(mlContext.Transforms.Categorical.OneHotEncoding("PaymentType"))
-                    // </Snippet8>
-                    // <Snippet9>
-                    .Append(mlContext.Transforms.Concatenate("Features", "VendorId", "RateCode", "PassengerCount", "TripTime", "TripDistance", "PaymentType"))
-                    // </Snippet9>
-                    // <Snippet10>
-                    .Append(mlContext.Regression.Trainers.FastTree());
-                    // </Snippet10>
+                     // The last step in data preparation combines all of the feature columns into the Features column using the 
+                     // ColumnConcatenatingEstimator transformation class. By default, a learning algorithm processes 
+                     // only features from the Features column
+                     .Append(mlContext.Transforms.Concatenate("Features", "VendorId", "RateCode", "PassengerCount", "TripTime", "TripDistance", "PaymentType"))
+                        // select a learning algorithm (learner). The learner trains the model. We chose a regression task for this problem, 
+                        // so we use a FastTreeRegressionTrainer learner, which is one of the regression learners provided by ML.NET.
+
+                        // The FastTreeRegressionTrainer learner utilizes gradient boosting. Gradient boosting is a machine learning technique 
+                        // for regression problems. It builds each regression tree in a step - wise fashion.It uses a pre - defined loss function 
+                        // to measure the error in each step and correct for it in the next.The result is a prediction model that is 
+                        // actually an ensemble of weaker prediction models
+                        .Append(mlContext.Regression.Trainers.FastTree());
 
 
             Console.WriteLine("=============== Create and Train the Model ===============");
-            
-            // <Snippet11>
+
             var model = pipeline.Fit(dataView);
-            // </Snippet11>
 
             Console.WriteLine("=============== End of training ===============");
             Console.WriteLine();
-            // <Snippet12>
             SaveModelAsFile(mlContext, model);
             return model;
-            // </Snippet12>
         }
 
         private static void Evaluate(MLContext mlContext, ITransformer model)
         {
-            // <Snippet15>
+            // Loads the test dataset.
+            //Creates the regression evaluator.
+            //Evaluates the model and creates metrics.
+            //Displays the metrics.
             IDataView dataView = _textLoader.Read(_testDataPath);
-            // </Snippet15>
-
-            // <Snippet16>
+            //use the machine learning model parameter (a transformer) to input the features and return predictions
             var predictions = model.Transform(dataView);
-            // </Snippet16>
-            // <Snippet17>
-            var metrics = mlContext.Regression.Evaluate(predictions, "Label", "Score");
-            // </Snippet17>
 
+            //computes the quality metrics for the PredictionModel using the specified dataset. 
+            //It returns a RegressionMetrics object that contains the overall metrics computed by regression evaluators.
+            var metrics = mlContext.Regression.Evaluate(predictions, "Label", "Score");
+
+            //RSquared is another evaluation metric of the regression models. 
+            // RSquared takes values between 0 and 1. The closer its value is to 1, the better the model is
             Console.WriteLine();
             Console.WriteLine($"*************************************************");
             Console.WriteLine($"*       Model quality metrics evaluation         ");
             Console.WriteLine($"*------------------------------------------------");
-            // <Snippet18>
             Console.WriteLine($"*       R2 Score:      {metrics.RSquared:0.##}");
-            // </Snippet18>
-            // <Snippet19>
+
             Console.WriteLine($"*       RMS loss:      {metrics.Rms:#.##}");
-            // </Snippet19>
+
             Console.WriteLine($"*************************************************");
 
         }
 
         private static void TestSinglePrediction(MLContext mlContext)
         {
+            //Creates a single comment of test data.
+            //Predicts fare amount based on test data.
+            //Combines test data and predictions for reporting.
+            //Displays the predicted results.
+
             //load the model
-            // <Snippet21>
             ITransformer loadedModel;
             using (var stream = new FileStream(_modelPath, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
                 loadedModel = mlContext.Model.Load(stream);
             }
-            // </Snippet21>
 
             //Prediction test
             // Create prediction function and make prediction.
-            // <Snippet22>
+            //The PredictionEngine<TSrc,TDst> is a wrapper that is returned from the CreatePredictionEngine method to test on single value
             var predictionFunction = loadedModel.CreatePredictionEngine<TaxiTrip, TaxiTripFarePrediction>(mlContext);
-            // </Snippet22>
             //Sample: 
             //vendor_id,rate_code,passenger_count,trip_time_in_secs,trip_distance,payment_type,fare_amount
             //VTS,1,1,1140,3.75,CRD,15.5
-            // <Snippet23>
             var taxiTripSample = new TaxiTrip()
             {
                 VendorId = "VTS",
@@ -151,26 +154,19 @@ namespace TaxiFarePrediction
                 PassengerCount = 1,
                 TripTime = 1140,
                 TripDistance = 3.75f,
-                PaymentType = "CRD",
+                PaymentType = "CSH", //"CRD",
                 FareAmount = 0 // To predict. Actual/Observed = 15.5
             };
-            // </Snippet23>
-            // <Snippet24>
             var prediction = predictionFunction.Predict(taxiTripSample);
-            // </Snippet24>
-            // <Snippet25>
             Console.WriteLine($"**********************************************************************");
             Console.WriteLine($"Predicted fare: {prediction.FareAmount:0.####}, actual fare: 15.5");
             Console.WriteLine($"**********************************************************************");
-            // </Snippet25>
         }
 
         private static void SaveModelAsFile(MLContext mlContext, ITransformer model)
         {
-            // <Snippet13> 
             using (var fileStream = new FileStream(_modelPath, FileMode.Create, FileAccess.Write, FileShare.Write))
                 mlContext.Model.Save(model, fileStream);
-            // </Snippet13>
 
             Console.WriteLine("The model is saved to {0}", _modelPath);
         }
